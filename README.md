@@ -14,6 +14,19 @@ committed together in one snapshot, which also supports run history and rollback
 | Storage | Apache Iceberg 1.10.0, Hadoop catalog |
 | Build and runtime | Maven, Docker Compose; Spark in local mode |
 
+## How to run
+
+Requires Docker with Docker Compose.
+
+```bash
+git clone https://github.com/alsubaie-os/order-ingestion-job-app.git && cd order-ingestion-job-app
+docker compose up --build -d
+```
+
+Compose starts Kafka, loads the 10,000 sample messages into the `orders` topic, and starts the API on
+`http://localhost:8080`. If Compose asks to allow `network.host` for the build, answer `y`.
+`docker compose down -v` resets everything: the Kafka messages, the table and the job logs.
+
 ## Architecture
 
 ```mermaid
@@ -166,3 +179,17 @@ Error structure, for example `409 Conflict`:
 | Operations | Manual `POST /jobs`, logs only | A scheduler such as Airflow, and alerts on failed runs |
 | Security | Open API | Authentication, and rollback allowed for operators only |
 | Testing | Manual, with Postman | Unit and integration tests in CI |
+
+## What is not finished
+
+- No automated tests in the repository. The API was tested with a Postman collection kept outside it.
+- Job status is kept in memory, so `GET /jobs/{runTs}` forgets jobs after an API restart. `GET /runs` keeps the full history.
+- Rejected messages are counted but not stored.
+- Tested on Linux only (GitHub Codespaces).
+
+## Assumptions
+
+- Messages are JSON with six required fields (`orderId`, `customerId`, `amount`, `currency`, `status`, `eventTime`). Values are stored as received.
+- Each Kafka message is loaded once. The same order sent twice is stored twice.
+- Only this job writes to the table, and only one API instance runs.
+- The sample loader expects a new `orders` topic with no other producers.
