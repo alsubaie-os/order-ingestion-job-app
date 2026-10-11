@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-ingestion-service
+  mvc:
+    problemdetails:
+      enabled: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+# Deployment settings; KAFKA_BOOTSTRAP_SERVERS is required.
+ingestion:
+  spark-home: ${SPARK_HOME:/opt/spark}
+  job-jar: ${JOB_JAR:/app/order-ingestion-job.jar}
+  main-class: com.example.ingest.OrderIngestionJob
+  master: ${SPARK_MASTER:local[*]}
+  driver-memory: ${SPARK_DRIVER_MEMORY:1g}
+  bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+  topic: ${KAFKA_TOPIC:orders}
+  warehouse: ${WAREHOUSE:/data/warehouse}
+  namespace: sales
+  table: orders
+  job-timeout: ${JOB_TIMEOUT:30m}
+  log-dir: ${JOB_LOG_DIR:/data/logs}
+
+logging:
+  level:
+    org.apache.hadoop: WARN

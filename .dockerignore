@@ -1,0 +1,6 @@
+**/target/
+.git/
+.vscode/
+.metals/
+.bloop/
+*.log

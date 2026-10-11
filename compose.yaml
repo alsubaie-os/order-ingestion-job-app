@@ -1,0 +1,79 @@
+services:
+  # Kafka and the API share a network namespace for Codespaces compatibility.
+  kafka:
+    image: apache/kafka:4.1.2
+    hostname: kafka
+    ports:
+      - "127.0.0.1:9092:9092"
+      - "127.0.0.1:8080:8080"
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LISTENERS: "INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:29092,EXTERNAL://localhost:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data/logs"
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "KAFKA_HEAP_OPTS=-Xmx128m /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      start_period: 30s
+      retries: 12
+
+  # Creates the topic and runs the sample loader after Kafka is ready.
+  kafka-init:
+    image: apache/kafka:4.1.2
+    network_mode: "service:kafka"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./samples:/samples:ro
+      - ./scripts:/scripts:ro
+    entrypoint: ["/bin/bash", "/scripts/load-samples.sh"]
+    restart: "no"
+
+  # The API launches separate Spark jobs; warehouse and logs persist in app-data.
+  app:
+    network_mode: "service:kafka"
+    build:
+      context: .
+      network: host
+    depends_on:
+      kafka:
+        condition: service_healthy
+        restart: true
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: localhost:29092
+      WAREHOUSE: /data/warehouse
+      JOB_LOG_DIR: /data/logs
+    volumes:
+      - app-data:/data
+    healthcheck:
+      # Ready when the API answers GET /runs with HTTP 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /runs HTTP/1.0\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200'"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+
+# Named volumes survive container recreation.
+volumes:
+  kafka-data:
+  app-data:
